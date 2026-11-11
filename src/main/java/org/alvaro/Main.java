@@ -1,8 +1,8 @@
 package org.alvaro;
 
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.io.IOException;
 
 public class Main {
 
@@ -42,6 +42,21 @@ public class Main {
             LECTOR_2.start();
             LECTOR_3.start();
             LECTOR_4.start();
+
+            System.out.println("\nIniciando hilos escritores:\n");
+
+            final Escritor ESCRITOR_1 =
+                    new Escritor(GESTOR_FICHERO, "Espana", "Madrid");
+
+            final Escritor ESCRITOR_2 =
+                    new Escritor(GESTOR_FICHERO, "Italia", "Roma");
+
+            final Escritor ESCRITOR_3 =
+                    new Escritor(GESTOR_FICHERO, "Reino Unido", "Londres");
+
+            ESCRITOR_1.start();
+            ESCRITOR_2.start();
+            ESCRITOR_3.start();
 
         } catch (IOException e) {
 

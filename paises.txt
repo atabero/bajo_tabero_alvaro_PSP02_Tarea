@@ -4,3 +4,6 @@ Japon:Tokio
 Alemania:Berlin
 Portugal:Lisboa
 Italia:Roma
+
+Espana:Madrid
+Reino Unido:Londres

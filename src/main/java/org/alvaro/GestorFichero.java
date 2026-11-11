@@ -102,4 +102,40 @@ public class GestorFichero {
             System.out.println(LINEA);
         }
     }
+    // Añade un pais y su capital si todavía no existe
+    public boolean anadirPais(String PAIS, String CAPITAL)
+            throws IOException, InterruptedException {
+
+        ACCESO_FICHERO.acquire();
+
+        try {
+
+            final String CAPITAL_EXISTENTE = buscarCapital(PAIS);
+
+            if (CAPITAL_EXISTENTE != null) {
+                System.out.println(
+                        "El pais " + PAIS + " ya existe en el fichero."
+                );
+                return false;
+            }
+
+            final String NUEVA_LINEA = PAIS + ":" + CAPITAL;
+
+            Files.writeString(
+                    RUTA_FICHERO,
+                    System.lineSeparator() + NUEVA_LINEA,
+                    StandardCharsets.UTF_8,
+                    java.nio.file.StandardOpenOption.APPEND
+            );
+
+            System.out.println(
+                    "Se ha añadido " + PAIS + ":" + CAPITAL + " al fichero."
+            );
+
+            return true;
+
+        } finally {
+            ACCESO_FICHERO.release();
+        }
+    }
 }
