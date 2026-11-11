@@ -1,4 +1,6 @@
 package org.alvaro;
+
+
 import java.io.IOException;
 
 public class Lector extends Thread {
@@ -15,39 +17,24 @@ public class Lector extends Thread {
     @Override
     public void run() {
 
-        boolean accesoConcedido = false;
-
         try {
-
-            GESTOR_FICHERO.iniciarLectura();
-            accesoConcedido = true;
 
             System.out.println(
                     getName() + " busca la capital de " + PAIS_BUSCADO
             );
 
             final String CAPITAL =
-                    GESTOR_FICHERO.buscarCapital(PAIS_BUSCADO);
+                    GESTOR_FICHERO.buscarCapitalEsperando(PAIS_BUSCADO);
 
-            if (CAPITAL != null) {
-
-                System.out.println(
-                        getName() + ": la capital de "
-                                + PAIS_BUSCADO + " es " + CAPITAL
-                );
-
-            } else {
-
-                System.out.println(
-                        getName() + ": no se ha encontrado "
-                                + PAIS_BUSCADO
-                );
-            }
+            System.out.println(
+                    getName() + ": la capital de "
+                            + PAIS_BUSCADO + " es " + CAPITAL
+            );
 
         } catch (InterruptedException e) {
 
             System.err.println(
-                    getName() + ": se ha interrumpido la lectura."
+                    getName() + ": se ha interrumpido la consulta."
             );
 
             Thread.currentThread().interrupt();
@@ -58,12 +45,6 @@ public class Lector extends Thread {
                     getName() + ": error al consultar el fichero: "
                             + e.getMessage()
             );
-
-        } finally {
-
-            if (accesoConcedido) {
-                GESTOR_FICHERO.finalizarLectura();
-            }
         }
     }
 }
