@@ -1,22 +1,27 @@
 package org.alvaro;
 
+
 import java.io.IOException;
+import java.util.concurrent.Semaphore;
 
 public class Escritor extends Thread {
 
     private final GestorFichero GESTOR_FICHERO;
     private final String PAIS;
     private final String CAPITAL;
+    private final Semaphore FINALIZACION;
 
     // Constructor del hilo escritor
     public Escritor(
             GestorFichero GESTOR_FICHERO,
             String PAIS,
-            String CAPITAL
+            String CAPITAL,
+            Semaphore FINALIZACION
     ) {
         this.GESTOR_FICHERO = GESTOR_FICHERO;
         this.PAIS = PAIS;
         this.CAPITAL = CAPITAL;
+        this.FINALIZACION = FINALIZACION;
     }
 
     @Override
@@ -44,6 +49,9 @@ public class Escritor extends Thread {
                     getName() + ": error al modificar el fichero: "
                             + e.getMessage()
             );
+
+        } finally {
+            FINALIZACION.release();
         }
     }
 }

@@ -1,5 +1,6 @@
 package org.alvaro;
 
+
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -17,6 +18,7 @@ public class GestorFichero {
     private final Semaphore MUTEX_LECTORES = new Semaphore(1, true);
     private final Semaphore LIMITE_LECTORES = new Semaphore(4, true);
     private final Semaphore MUTEX_ACTUALIZACION = new Semaphore(1, true);
+    private final Semaphore LECTOR_PENDIENTE = new Semaphore(0);
 
     private final List<Semaphore> LECTORES_PENDIENTES = new ArrayList<>();
 
@@ -117,6 +119,7 @@ public class GestorFichero {
                     try {
                         ESPERA = new Semaphore(0);
                         LECTORES_PENDIENTES.add(ESPERA);
+                        LECTOR_PENDIENTE.release();
                     } finally {
                         MUTEX_ACTUALIZACION.release();
                     }
@@ -145,6 +148,11 @@ public class GestorFichero {
                 throw e;
             }
         }
+    }
+
+    // Espera hasta que un lector haya solicitado un pais inexistente
+    public void esperarLectorPendiente() throws InterruptedException {
+        LECTOR_PENDIENTE.acquire();
     }
 
     // Añade un pais y su capital si todavía no existe
