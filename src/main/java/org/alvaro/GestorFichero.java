@@ -1,12 +1,12 @@
 package org.alvaro;
 
-
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
+import java.util.Iterator;
 import java.util.List;
 import java.util.concurrent.Semaphore;
 
@@ -20,9 +20,22 @@ public class GestorFichero {
     private final Semaphore MUTEX_ACTUALIZACION = new Semaphore(1, true);
     private final Semaphore LECTOR_PENDIENTE = new Semaphore(0);
 
-    private final List<Semaphore> LECTORES_PENDIENTES = new ArrayList<>();
+    private final List<SolicitudLectura> LECTORES_PENDIENTES =
+            new ArrayList<>();
 
     private int lectoresActivos = 0;
+
+    // Representa la solicitud de un lector que espera por un pais
+    private static class SolicitudLectura {
+
+        private final String PAIS_BUSCADO;
+        private final Semaphore SEMAFORO_ESPERA;
+
+        public SolicitudLectura(String PAIS_BUSCADO) {
+            this.PAIS_BUSCADO = PAIS_BUSCADO;
+            this.SEMAFORO_ESPERA = new Semaphore(0);
+        }
+    }
 
     // Constructor de la clase
     public GestorFichero(Path RUTA_FICHERO) {
@@ -105,7 +118,7 @@ public class GestorFichero {
 
             iniciarLectura();
 
-            Semaphore ESPERA = null;
+            SolicitudLectura SOLICITUD = null;
             String CAPITAL;
 
             try {
@@ -117,9 +130,12 @@ public class GestorFichero {
                     MUTEX_ACTUALIZACION.acquire();
 
                     try {
-                        ESPERA = new Semaphore(0);
-                        LECTORES_PENDIENTES.add(ESPERA);
+
+                        SOLICITUD = new SolicitudLectura(PAIS_BUSCADO);
+                        LECTORES_PENDIENTES.add(SOLICITUD);
+
                         LECTOR_PENDIENTE.release();
+
                     } finally {
                         MUTEX_ACTUALIZACION.release();
                     }
@@ -134,13 +150,15 @@ public class GestorFichero {
             }
 
             try {
-                ESPERA.acquire();
+
+                SOLICITUD.SEMAFORO_ESPERA.acquire();
+
             } catch (InterruptedException e) {
 
                 MUTEX_ACTUALIZACION.acquireUninterruptibly();
 
                 try {
-                    LECTORES_PENDIENTES.remove(ESPERA);
+                    LECTORES_PENDIENTES.remove(SOLICITUD);
                 } finally {
                     MUTEX_ACTUALIZACION.release();
                 }
@@ -150,7 +168,7 @@ public class GestorFichero {
         }
     }
 
-    // Espera hasta que un lector haya solicitado un pais inexistente
+    // Espera hasta que un lector solicite un pais inexistente
     public void esperarLectorPendiente() throws InterruptedException {
         LECTOR_PENDIENTE.acquire();
     }
@@ -191,11 +209,19 @@ public class GestorFichero {
 
             try {
 
-                for (Semaphore ESPERA : LECTORES_PENDIENTES) {
-                    ESPERA.release();
-                }
+                final Iterator<SolicitudLectura> ITERADOR =
+                        LECTORES_PENDIENTES.iterator();
 
-                LECTORES_PENDIENTES.clear();
+                while (ITERADOR.hasNext()) {
+
+                    final SolicitudLectura SOLICITUD = ITERADOR.next();
+
+                    if (SOLICITUD.PAIS_BUSCADO.equalsIgnoreCase(PAIS)) {
+
+                        SOLICITUD.SEMAFORO_ESPERA.release();
+                        ITERADOR.remove();
+                    }
+                }
 
             } finally {
                 MUTEX_ACTUALIZACION.release();
