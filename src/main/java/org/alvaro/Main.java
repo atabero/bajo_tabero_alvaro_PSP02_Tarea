@@ -1,110 +1,107 @@
 package org.alvaro;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
+import java.util.List;
 import java.util.concurrent.Semaphore;
 
 public class Main {
 
     public static void main(String[] args) {
 
-        final Path RUTA_FICHERO = Path.of("paises.txt");
-
         try {
+            // Ruta del fichero de paises.
+            final Path RUTA_FICHERO = Path.of("paises.txt");
 
-            if (!Files.exists(RUTA_FICHERO)) {
-                System.out.println("No se encuentra el fichero de paises.");
-                return;
-            }
+            // Datos iniciales para que cada ejecucion sea reproducible.
+            final List<String> PAISES_INICIALES = List.of(
+                    "Austria:Viena",
+                    "Francia:Paris",
+                    "Japon:Tokio",
+                    "Alemania:Berlin",
+                    "Portugal:Lisboa",
+                    "Italia:Roma"
+            );
 
+            // Creamos o restauramos el fichero con los datos iniciales.
+            Files.write(
+                    RUTA_FICHERO,
+                    PAISES_INICIALES,
+                    StandardCharsets.UTF_8,
+                    StandardOpenOption.CREATE,
+                    StandardOpenOption.TRUNCATE_EXISTING,
+                    StandardOpenOption.WRITE
+            );
+
+            // Creamos el gestor compartido por todos los hilos.
             final GestorFichero GESTOR_FICHERO =
                     new GestorFichero(RUTA_FICHERO);
 
-            final Semaphore FINALIZACION = new Semaphore(0);
+            // Semaforo que permite esperar a que terminen los siete hilos.
+            final Semaphore SEMAFORO_FINALIZACION = new Semaphore(0);
 
-            System.out.println("Contenido inicial del fichero:\n");
+            // Creamos los cuatro lectores.
+            final Lector LECTOR_1 = new Lector(
+                    GESTOR_FICHERO, "Italia", SEMAFORO_FINALIZACION
+            );
+            final Lector LECTOR_2 = new Lector(
+                    GESTOR_FICHERO, "Francia", SEMAFORO_FINALIZACION
+            );
+            final Lector LECTOR_3 = new Lector(
+                    GESTOR_FICHERO, "Portugal", SEMAFORO_FINALIZACION
+            );
+            final Lector LECTOR_4 = new Lector(
+                    GESTOR_FICHERO, "Inglaterra", SEMAFORO_FINALIZACION
+            );
 
-            GESTOR_FICHERO.mostrarContenido();
-
-            System.out.println("\nIniciando los cuatro lectores:\n");
-
-            final Lector LECTOR_1 =
-                    new Lector(GESTOR_FICHERO, "Austria", FINALIZACION);
-
-            final Lector LECTOR_2 =
-                    new Lector(GESTOR_FICHERO, "Francia", FINALIZACION);
-
-            final Lector LECTOR_3 =
-                    new Lector(GESTOR_FICHERO, "Japon", FINALIZACION);
-
-            final Lector LECTOR_4 =
-                    new Lector(GESTOR_FICHERO, "España", FINALIZACION);
+            System.out.println("Iniciando los cuatro lectores...");
 
             LECTOR_1.start();
             LECTOR_2.start();
             LECTOR_3.start();
             LECTOR_4.start();
 
-            System.out.println(
-                    "\nEsperando a que un lector solicite España...\n"
+            // No iniciamos los escritores hasta que Inglaterra este pendiente.
+            GESTOR_FICHERO.esperarLectorPendiente("Inglaterra");
+
+            System.out.println("\nIniciando los tres escritores...");
+
+            // Creamos los tres escritores.
+            final Escritor ESCRITOR_1 = new Escritor(
+                    GESTOR_FICHERO, "Noruega", "Oslo", SEMAFORO_FINALIZACION
             );
-
-            GESTOR_FICHERO.esperarLectorPendiente();
-
-            System.out.println(
-                    "Un lector está esperando por España."
+            final Escritor ESCRITOR_2 = new Escritor(
+                    GESTOR_FICHERO, "Holanda", "Amsterdam", SEMAFORO_FINALIZACION
             );
-
-            System.out.println("\nIniciando los tres escritores:\n");
-
-            final Escritor ESCRITOR_1 =
-                    new Escritor(
-                            GESTOR_FICHERO,
-                            "España",
-                            "Madrid",
-                            FINALIZACION
-                    );
-
-            final Escritor ESCRITOR_2 =
-                    new Escritor(
-                            GESTOR_FICHERO,
-                            "Italia",
-                            "Roma",
-                            FINALIZACION
-                    );
-
-            final Escritor ESCRITOR_3 =
-                    new Escritor(
-                            GESTOR_FICHERO,
-                            "Reino Unido",
-                            "Londres",
-                            FINALIZACION
-                    );
+            final Escritor ESCRITOR_3 = new Escritor(
+                    GESTOR_FICHERO, "Inglaterra", "Londres", SEMAFORO_FINALIZACION
+            );
 
             ESCRITOR_1.start();
             ESCRITOR_2.start();
             ESCRITOR_3.start();
 
-            // Espera a que terminen los cuatro lectores y los tres escritores
-            FINALIZACION.acquire(7);
+            // Esperamos a que finalicen los cuatro lectores y los tres escritores.
+            SEMAFORO_FINALIZACION.acquire(7);
 
             System.out.println("\nTodos los hilos han terminado.");
+            System.out.println("\nContenido final del fichero:");
 
-            System.out.println("\nContenido final del fichero:\n");
+            Files.readAllLines(
+                    RUTA_FICHERO,
+                    StandardCharsets.UTF_8
+            ).forEach(System.out::println);
 
-            GESTOR_FICHERO.mostrarContenido();
+            System.out.println("\nEJECUCION CORRECTA");
 
         } catch (InterruptedException e) {
-
-            System.err.println(
-                    "El hilo principal ha sido interrumpido."
-            );
-
+            System.err.println("El hilo principal ha sido interrumpido.");
             Thread.currentThread().interrupt();
 
         } catch (IOException e) {
-
             System.err.println(
                     "Error al gestionar el fichero: " + e.getMessage()
             );

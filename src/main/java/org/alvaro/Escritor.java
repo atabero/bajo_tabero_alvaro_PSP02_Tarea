@@ -1,6 +1,5 @@
 package org.alvaro;
 
-
 import java.io.IOException;
 import java.util.concurrent.Semaphore;
 
@@ -9,49 +8,42 @@ public class Escritor extends Thread {
     private final GestorFichero GESTOR_FICHERO;
     private final String PAIS;
     private final String CAPITAL;
-    private final Semaphore FINALIZACION;
+    private final Semaphore SEMAFORO_FINALIZACION;
 
-    // Constructor del hilo escritor
+    // Constructor del escritor.
     public Escritor(
             GestorFichero GESTOR_FICHERO,
             String PAIS,
             String CAPITAL,
-            Semaphore FINALIZACION
+            Semaphore SEMAFORO_FINALIZACION
     ) {
         this.GESTOR_FICHERO = GESTOR_FICHERO;
         this.PAIS = PAIS;
         this.CAPITAL = CAPITAL;
-        this.FINALIZACION = FINALIZACION;
+        this.SEMAFORO_FINALIZACION = SEMAFORO_FINALIZACION;
     }
 
+    // Metodo que ejecuta el hilo.
     @Override
     public void run() {
 
         try {
-
-            System.out.println(
-                    getName() + " intenta añadir " + PAIS
-            );
-
             GESTOR_FICHERO.anadirPais(PAIS, CAPITAL);
 
         } catch (InterruptedException e) {
-
-            System.err.println(
-                    getName() + ": se ha interrumpido la escritura."
+            System.out.println(
+                    "El escritor de " + PAIS + " ha sido interrumpido."
             );
-
             Thread.currentThread().interrupt();
 
         } catch (IOException e) {
-
             System.err.println(
-                    getName() + ": error al modificar el fichero: "
-                            + e.getMessage()
+                    "Error al añadir " + PAIS + ": " + e.getMessage()
             );
 
         } finally {
-            FINALIZACION.release();
+            // Indicamos que el escritor ha finalizado.
+            SEMAFORO_FINALIZACION.release();
         }
     }
 }

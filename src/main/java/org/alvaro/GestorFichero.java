@@ -5,104 +5,128 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
-import java.util.ArrayList;
+import java.util.ArrayDeque;
 import java.util.Iterator;
-import java.util.List;
+import java.util.Queue;
 import java.util.concurrent.Semaphore;
 
 public class GestorFichero {
 
+    // Controla el acceso exclusivo al fichero.
+    private final Semaphore SEMAFORO_ACCESO_FICHERO =
+            new Semaphore(1, true);
+
+    // Protege el contador de lectores activos.
+    private final Semaphore SEMAFORO_LECTORES =
+            new Semaphore(1, true);
+
+    // Limita a cuatro el numero de lectores simultaneos.
+    private final Semaphore SEMAFORO_LIMITE_LECTORES =
+            new Semaphore(4, true);
+
+    // Protege la cola de solicitudes de lectura pendientes.
+    private final Semaphore SEMAFORO_ACTUALIZACION =
+            new Semaphore(1, true);
+
+    // Avisa a la clase principal cuando se registra una solicitud pendiente.
+    private final Semaphore SEMAFORO_LECTOR_PENDIENTE =
+            new Semaphore(0);
+
+    // Cola con las solicitudes de lectura que esperan una actualizacion.
+    private final Queue<SolicitudLectura> LECTORES_ESPERANDO =
+            new ArrayDeque<>();
+
+    // Ruta del fichero compartido.
     private final Path RUTA_FICHERO;
 
-    private final Semaphore ACCESO_FICHERO = new Semaphore(1, true);
-    private final Semaphore MUTEX_LECTORES = new Semaphore(1, true);
-    private final Semaphore LIMITE_LECTORES = new Semaphore(4, true);
-    private final Semaphore MUTEX_ACTUALIZACION = new Semaphore(1, true);
-    private final Semaphore LECTOR_PENDIENTE = new Semaphore(0);
+    // Numero de lectores que estan accediendo al fichero.
+    private int LECTORES_ACTIVOS = 0;
 
-    private final List<SolicitudLectura> LECTORES_PENDIENTES =
-            new ArrayList<>();
-
-    private int lectoresActivos = 0;
-
-    // Representa la solicitud de un lector que espera por un pais
+    // Representa a un lector que espera la incorporacion de un pais.
     private static class SolicitudLectura {
 
         private final String PAIS_BUSCADO;
-        private final Semaphore SEMAFORO_ESPERA;
+        private final Semaphore SEMAFORO_AVISO = new Semaphore(0);
 
-        public SolicitudLectura(String PAIS_BUSCADO) {
+        private SolicitudLectura(String PAIS_BUSCADO) {
             this.PAIS_BUSCADO = PAIS_BUSCADO;
-            this.SEMAFORO_ESPERA = new Semaphore(0);
         }
     }
 
-    // Constructor de la clase
+    // Constructor del gestor.
     public GestorFichero(Path RUTA_FICHERO) {
         this.RUTA_FICHERO = RUTA_FICHERO;
     }
 
-    // Solicita acceso compartido para un lector
-    public void iniciarLectura() throws InterruptedException {
+    /**
+     * Permite la entrada de un lector.
+     * El primer lector bloquea el acceso a los escritores.
+     */
+    private void entrarLector() throws InterruptedException {
 
-        LIMITE_LECTORES.acquire();
+        // Reservamos una de las cuatro plazas disponibles.
+        SEMAFORO_LIMITE_LECTORES.acquire();
 
         try {
-            MUTEX_LECTORES.acquire();
+            SEMAFORO_LECTORES.acquire();
         } catch (InterruptedException e) {
-            LIMITE_LECTORES.release();
+            SEMAFORO_LIMITE_LECTORES.release();
             throw e;
         }
 
         try {
+            LECTORES_ACTIVOS++;
 
-            lectoresActivos++;
-
-            if (lectoresActivos == 1) {
-                ACCESO_FICHERO.acquire();
+            // El primer lector adquiere el acceso compartido al fichero.
+            if (LECTORES_ACTIVOS == 1) {
+                try {
+                    SEMAFORO_ACCESO_FICHERO.acquire();
+                } catch (InterruptedException e) {
+                    LECTORES_ACTIVOS--;
+                    SEMAFORO_LIMITE_LECTORES.release();
+                    throw e;
+                }
             }
-
-        } catch (InterruptedException e) {
-
-            lectoresActivos--;
-            MUTEX_LECTORES.release();
-            LIMITE_LECTORES.release();
-            throw e;
+        } finally {
+            SEMAFORO_LECTORES.release();
         }
-
-        MUTEX_LECTORES.release();
     }
 
-    // Libera el acceso compartido del lector
-    public void finalizarLectura() {
+    /**
+     * Permite la salida de un lector.
+     * El ultimo lector libera el acceso a los escritores.
+     */
+    private void salirLector() {
 
-        MUTEX_LECTORES.acquireUninterruptibly();
+        SEMAFORO_LECTORES.acquireUninterruptibly();
 
-        lectoresActivos--;
+        try {
+            LECTORES_ACTIVOS--;
 
-        if (lectoresActivos == 0) {
-            ACCESO_FICHERO.release();
+            // El ultimo lector permite entrar a un escritor.
+            if (LECTORES_ACTIVOS == 0) {
+                SEMAFORO_ACCESO_FICHERO.release();
+            }
+        } finally {
+            SEMAFORO_LECTORES.release();
+            SEMAFORO_LIMITE_LECTORES.release();
         }
-
-        MUTEX_LECTORES.release();
-        LIMITE_LECTORES.release();
     }
 
-    // Busca secuencialmente la capital de un pais
-    private String buscarCapital(String PAIS_BUSCADO) throws IOException {
+    /**
+     * Busca secuencialmente la capital de un pais.
+     * Devuelve null si el pais no existe.
+     */
+    private String buscarCapital(String PAIS) throws IOException {
 
-        final List<String> LINEAS = Files.readAllLines(
+        for (final String LINEA : Files.readAllLines(
                 RUTA_FICHERO,
                 StandardCharsets.UTF_8
-        );
-
-        for (String LINEA : LINEAS) {
-
+        )) {
             final String[] DATOS = LINEA.split(":", 2);
 
             if (DATOS.length == 2
-                    && DATOS[0].trim().equalsIgnoreCase(PAIS_BUSCADO)) {
-
+                    && DATOS[0].trim().equalsIgnoreCase(PAIS)) {
                 return DATOS[1].trim();
             }
         }
@@ -110,94 +134,125 @@ public class GestorFichero {
         return null;
     }
 
-    // Busca un pais y espera si todavía no existe
-    public String buscarCapitalEsperando(String PAIS_BUSCADO)
-            throws IOException, InterruptedException {
+    /**
+     * Consulta la capital de un pais.
+     * Si no existe, el lector espera a que se incorpore ese pais
+     * y vuelve a realizar la busqueda.
+     */
+    public void consultarCapital(String PAIS)
+            throws InterruptedException, IOException {
 
         while (true) {
 
-            iniciarLectura();
+            entrarLector();
 
-            SolicitudLectura SOLICITUD = null;
             String CAPITAL;
+            SolicitudLectura SOLICITUD = null;
 
             try {
-
-                CAPITAL = buscarCapital(PAIS_BUSCADO);
+                CAPITAL = buscarCapital(PAIS);
 
                 if (CAPITAL == null) {
 
-                    MUTEX_ACTUALIZACION.acquire();
+                    // Registramos la solicitud antes de abandonar la lectura.
+                    SEMAFORO_ACTUALIZACION.acquire();
 
                     try {
+                        SOLICITUD = new SolicitudLectura(PAIS);
+                        LECTORES_ESPERANDO.add(SOLICITUD);
 
-                        SOLICITUD = new SolicitudLectura(PAIS_BUSCADO);
-                        LECTORES_PENDIENTES.add(SOLICITUD);
-
-                        LECTOR_PENDIENTE.release();
+                        // Avisamos a la clase principal de que hay un lector pendiente.
+                        SEMAFORO_LECTOR_PENDIENTE.release();
 
                     } finally {
-                        MUTEX_ACTUALIZACION.release();
+                        SEMAFORO_ACTUALIZACION.release();
                     }
                 }
 
-            } finally {
-                finalizarLectura();
+            } catch (InterruptedException | IOException e) {
+                salirLector();
+                throw e;
             }
+
+            // Liberamos el acceso de lectura antes de esperar al escritor.
+            salirLector();
 
             if (CAPITAL != null) {
-                return CAPITAL;
+                System.out.println(
+                        Thread.currentThread().getName()
+                                + ": la capital de " + PAIS
+                                + " es " + CAPITAL
+                );
+                return;
             }
 
-            try {
+            System.out.println(
+                    Thread.currentThread().getName()
+                            + " espera a que se añada " + PAIS
+            );
 
-                SOLICITUD.SEMAFORO_ESPERA.acquire();
+            try {
+                // Esperamos a que un escritor incorpore el pais solicitado.
+                SOLICITUD.SEMAFORO_AVISO.acquire();
 
             } catch (InterruptedException e) {
 
-                MUTEX_ACTUALIZACION.acquireUninterruptibly();
+                // Si sigue en la cola, retiramos la solicitud.
+                SEMAFORO_ACTUALIZACION.acquireUninterruptibly();
 
                 try {
-                    LECTORES_PENDIENTES.remove(SOLICITUD);
+                    LECTORES_ESPERANDO.remove(SOLICITUD);
                 } finally {
-                    MUTEX_ACTUALIZACION.release();
+                    SEMAFORO_ACTUALIZACION.release();
                 }
 
                 throw e;
             }
+
+            // Al despertar, el bucle vuelve a buscar la capital en el fichero.
         }
     }
 
-    // Espera hasta que un lector solicite un pais inexistente
-    public void esperarLectorPendiente() throws InterruptedException {
-        LECTOR_PENDIENTE.acquire();
-    }
+    /**
+     * Añade un pais si todavia no existe.
+     * Solamente un escritor puede modificar el fichero cada vez.
+     */
+    public void anadirPais(String PAIS, String CAPITAL)
+            throws InterruptedException, IOException {
 
-    // Añade un pais y su capital si todavía no existe
-    public boolean anadirPais(String PAIS, String CAPITAL)
-            throws IOException, InterruptedException {
-
-        ACCESO_FICHERO.acquire();
+        SEMAFORO_ACCESO_FICHERO.acquire();
 
         try {
-
-            final String CAPITAL_EXISTENTE = buscarCapital(PAIS);
-
-            if (CAPITAL_EXISTENTE != null) {
-
+            if (buscarCapital(PAIS) != null) {
                 System.out.println(
                         "El pais " + PAIS + " ya existe en el fichero."
                 );
-
-                return false;
+                return;
             }
 
-            final String NUEVA_LINEA = PAIS + ":" + CAPITAL;
+            final String CONTENIDO = Files.readString(
+                    RUTA_FICHERO,
+                    StandardCharsets.UTF_8
+            );
+
+            // Añadimos un salto de linea solo si el fichero lo necesita.
+            String SEPARADOR = "";
+
+            if (!CONTENIDO.isEmpty()
+                    && !CONTENIDO.endsWith("\n")
+                    && !CONTENIDO.endsWith("\r")) {
+                SEPARADOR = System.lineSeparator();
+            }
+
+            final String NUEVA_LINEA = SEPARADOR
+                    + PAIS + ":" + CAPITAL
+                    + System.lineSeparator();
 
             Files.writeString(
                     RUTA_FICHERO,
-                    System.lineSeparator() + NUEVA_LINEA,
+                    NUEVA_LINEA,
                     StandardCharsets.UTF_8,
+                    StandardOpenOption.CREATE,
                     StandardOpenOption.APPEND
             );
 
@@ -205,45 +260,52 @@ public class GestorFichero {
                     "Se ha añadido " + PAIS + ":" + CAPITAL + " al fichero."
             );
 
-            MUTEX_ACTUALIZACION.acquireUninterruptibly();
+            // Despertamos solo a los lectores que esperan este pais.
+            SEMAFORO_ACTUALIZACION.acquireUninterruptibly();
 
             try {
-
                 final Iterator<SolicitudLectura> ITERADOR =
-                        LECTORES_PENDIENTES.iterator();
+                        LECTORES_ESPERANDO.iterator();
 
                 while (ITERADOR.hasNext()) {
-
                     final SolicitudLectura SOLICITUD = ITERADOR.next();
 
                     if (SOLICITUD.PAIS_BUSCADO.equalsIgnoreCase(PAIS)) {
-
-                        SOLICITUD.SEMAFORO_ESPERA.release();
                         ITERADOR.remove();
+                        SOLICITUD.SEMAFORO_AVISO.release();
                     }
                 }
 
             } finally {
-                MUTEX_ACTUALIZACION.release();
+                SEMAFORO_ACTUALIZACION.release();
             }
 
-            return true;
-
         } finally {
-            ACCESO_FICHERO.release();
+            SEMAFORO_ACCESO_FICHERO.release();
         }
     }
 
-    // Muestra el contenido completo del fichero
-    public void mostrarContenido() throws IOException {
+    /**
+     * Espera hasta que un lector concreto no encuentre su pais.
+     * Se utiliza para coordinar el inicio de los escritores en la prueba.
+     */
+    public void esperarLectorPendiente(String PAIS)
+            throws InterruptedException {
 
-        final List<String> LINEAS = Files.readAllLines(
-                RUTA_FICHERO,
-                StandardCharsets.UTF_8
-        );
+        while (true) {
 
-        for (String LINEA : LINEAS) {
-            System.out.println(LINEA);
+            SEMAFORO_LECTOR_PENDIENTE.acquire();
+            SEMAFORO_ACTUALIZACION.acquire();
+
+            try {
+                for (final SolicitudLectura SOLICITUD : LECTORES_ESPERANDO) {
+                    if (SOLICITUD.PAIS_BUSCADO.equalsIgnoreCase(PAIS)) {
+                        return;
+                    }
+                }
+            } finally {
+                SEMAFORO_ACTUALIZACION.release();
+            }
         }
     }
 }

@@ -1,60 +1,46 @@
 package org.alvaro;
 
-
 import java.io.IOException;
 import java.util.concurrent.Semaphore;
 
 public class Lector extends Thread {
 
     private final GestorFichero GESTOR_FICHERO;
-    private final String PAIS_BUSCADO;
-    private final Semaphore FINALIZACION;
+    private final String PAIS;
+    private final Semaphore SEMAFORO_FINALIZACION;
 
-    // Constructor del hilo lector
+    // Constructor del lector.
     public Lector(
             GestorFichero GESTOR_FICHERO,
-            String PAIS_BUSCADO,
-            Semaphore FINALIZACION
+            String PAIS,
+            Semaphore SEMAFORO_FINALIZACION
     ) {
         this.GESTOR_FICHERO = GESTOR_FICHERO;
-        this.PAIS_BUSCADO = PAIS_BUSCADO;
-        this.FINALIZACION = FINALIZACION;
+        this.PAIS = PAIS;
+        this.SEMAFORO_FINALIZACION = SEMAFORO_FINALIZACION;
     }
 
+    // Metodo que ejecuta el hilo.
     @Override
     public void run() {
 
         try {
-
-            System.out.println(
-                    getName() + " busca la capital de " + PAIS_BUSCADO
-            );
-
-            final String CAPITAL =
-                    GESTOR_FICHERO.buscarCapitalEsperando(PAIS_BUSCADO);
-
-            System.out.println(
-                    getName() + ": la capital de "
-                            + PAIS_BUSCADO + " es " + CAPITAL
-            );
+            GESTOR_FICHERO.consultarCapital(PAIS);
 
         } catch (InterruptedException e) {
-
-            System.err.println(
-                    getName() + ": se ha interrumpido la consulta."
+            System.out.println(
+                    "El lector de " + PAIS + " ha sido interrumpido."
             );
-
             Thread.currentThread().interrupt();
 
         } catch (IOException e) {
-
             System.err.println(
-                    getName() + ": error al consultar el fichero: "
-                            + e.getMessage()
+                    "Error al consultar " + PAIS + ": " + e.getMessage()
             );
 
         } finally {
-            FINALIZACION.release();
+            // Indicamos que el lector ha finalizado.
+            SEMAFORO_FINALIZACION.release();
         }
     }
 }
