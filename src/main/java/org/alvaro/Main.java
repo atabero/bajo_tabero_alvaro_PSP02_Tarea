@@ -1,10 +1,8 @@
 package org.alvaro;
 
-import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.List;
+import java.io.IOException;
 
 public class Main {
 
@@ -14,29 +12,41 @@ public class Main {
 
         try {
 
-            // Comprobamos que el fichero existe
             if (!Files.exists(RUTA_FICHERO)) {
                 System.out.println("No se encuentra el fichero de paises.");
                 return;
             }
 
-            // Leemos el contenido del fichero
-            final List<String> PAISES = Files.readAllLines(
-                    RUTA_FICHERO,
-                    StandardCharsets.UTF_8
-            );
+            final GestorFichero GESTOR_FICHERO =
+                    new GestorFichero(RUTA_FICHERO);
 
-            // Mostramos los registros almacenados
             System.out.println("Contenido inicial del fichero:\n");
 
-            for (String PAIS : PAISES) {
-                System.out.println(PAIS);
-            }
+            GESTOR_FICHERO.mostrarContenido();
+
+            System.out.println("\nIniciando hilos lectores:\n");
+
+            final Lector LECTOR_1 =
+                    new Lector(GESTOR_FICHERO, "Austria");
+
+            final Lector LECTOR_2 =
+                    new Lector(GESTOR_FICHERO, "Francia");
+
+            final Lector LECTOR_3 =
+                    new Lector(GESTOR_FICHERO, "Japon");
+
+            final Lector LECTOR_4 =
+                    new Lector(GESTOR_FICHERO, "Italia");
+
+            LECTOR_1.start();
+            LECTOR_2.start();
+            LECTOR_3.start();
+            LECTOR_4.start();
 
         } catch (IOException e) {
 
             System.err.println(
-                    "Error al leer el fichero: " + e.getMessage()
+                    "Error al gestionar el fichero: " + e.getMessage()
             );
         }
     }
